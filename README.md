@@ -161,6 +161,13 @@ Based on the final dataset:
 
 ---
 
+## Project Files
+
+- [Database Setup](SQL/01_database_setup.sql)
+- [Data Quality Checks](SQL/02_data_quality_checks.sql)
+- [50 SQL Analysis Queries](SQL/03_ecommerce_analysis.sql)
+- [Power BI Dashboard](Dashboard/ecommerce_dashboard.pbix)
+
 ## Project Structure
 
 ```text
