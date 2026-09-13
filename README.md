@@ -141,7 +141,7 @@ The dashboard also includes filters for:
 - Month
 - Product Category
 
-![E-Commerce Dashboard](images/ecommerce_dashboard.png)
+![E-Commerce Dashboard](Images/ecommerce_dashboard.png)
 
 ---
 
