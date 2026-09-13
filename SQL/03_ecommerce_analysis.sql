@@ -183,9 +183,6 @@ where spendings_rank <=10
 -- If products have the same revenue, they should receive
 -- the same ranking.
 
-
--- Write your query below:
-
 with product_revenue as (
 select oi.product_id, p.name as product_name, sum(((oi.quantity*p.price)*(1-(coalesce(d.discount_percent,0)/100)))) as revenue,
 dense_rank() over(order by sum(((oi.quantity*p.price)*(1-(coalesce(d.discount_percent,0)/100)))) desc) as revenue_rank
@@ -265,7 +262,6 @@ order by order_id
 
 -- Q28. Previous Order Amount
 -- For every order, show the customer's previous order amount.
---
 
 select user_id as customer_id, id as order_id, created_at as order_date, total as order_amount,
 lag(total) over(partition by user_id order by created_at) as previous_order_amount
@@ -325,7 +321,6 @@ on u.id = od.user_id
 --   - number of orders
 --   - total revenue
 --   - average order value
--- Sort chronologically.
 
 select to_char(created_at, 'YYYY-MM') as month, count(id) as number_of_orders, sum(total) as total_sales, avg(total) as avg_sales
 from order_details od 
@@ -438,9 +433,6 @@ from calculated
 where to_date(lastest_order_date_at_store, 'YYYY-MM-DD') - to_date(latest_order_date_of_customer, 'YYYY-MM-DD') > 30
 order by latest_order_date_of_customer desc 
 
--- ============================================================
-
-
 -- Q42. HIGHEST-VALUE ORDER PER CUSTOMER
 -- Find the highest-value order placed by each customer.
 --
@@ -452,15 +444,14 @@ order by latest_order_date_of_customer desc
 -- If a customer has multiple orders with the same highest
 -- amount, return only ONE order.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+with calculated as (
+select u.id as customer_id, od.id as order_id, od.total as order_amount, row_number() over(partition by u.id order by od.total desc, od.id) as order_rank
+from "user" u 
+left join order_details od 
+on u.id = od.user_id)
+select customer_id, order_id, order_amount
+from calculated 
+where order_rank = 1
 
 -- Q43. CUSTOMERS WHO INCREASED THEIR SPENDING
 -- Find customers whose most recent order was greater in
@@ -473,15 +464,13 @@ order by latest_order_date_of_customer desc
 --
 -- Only include customers who have at least 2 orders.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+with calculated as (
+select user_id as customer_id, lag(total) over(partition by user_id order by created_at) as previous_order_amount, total as latest_order_amount, 
+created_at, max(created_at) over(partition by user_id) as latest_order_date
+from order_details od)
+select customer_id, previous_order_amount, latest_order_amount
+from calculated 
+where latest_order_amount > previous_order_amount and created_at = latest_order_date 
 
 -- Q44. PRODUCT SALES CONTRIBUTION
 -- For every product, calculate its percentage contribution
@@ -492,18 +481,15 @@ order by latest_order_date_of_customer desc
 --   product_name
 --   product_revenue
 --   revenue_contribution_percentage
---
--- Sort by revenue contribution descending.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+select distinct p.id as product_id, p.name as product_name, coalesce(sum((oi.quantity*p.price)*(1-d.discount_percent/100.0)) over(partition by p.id), 0) as product_revenue,
+coalesce(((sum((oi.quantity*p.price)*(1-d.discount_percent/100.0)) over(partition by p.id)*100.0)/(sum((oi.quantity*p.price)*(1-d.discount_percent/100.0)) over())), 0) as revenue_contribution_percentage
+from product p 
+left join order_items oi 
+on p.id = oi.product_id 
+left join discount d 
+on p.discount_id = d.id 
+order by revenue_contribution_percentage desc
 
 -- Q45. CATEGORY REVENUE RANKING
 -- Rank product categories based on total revenue.
@@ -516,15 +502,18 @@ order by latest_order_date_of_customer desc
 -- Categories with the same revenue should receive the
 -- same rank.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+select p.category_id as product_category_id, pc.name as product_category_name,
+coalesce(sum((oi.quantity*p.price)*(1-d.discount_percent/100.0)), 0) as product_category_revenue,
+dense_rank() over(order by coalesce(sum((oi.quantity*p.price)*(1-d.discount_percent/100.0)), 0) desc) as revenue_rank
+from product_category pc 
+left join product p 
+on pc.id = p.category_id 
+left join order_items oi 
+on p.id = oi.product_id 
+left join discount d 
+on p.discount_id = d.id
+group by p.category_id, pc.name
+order by revenue_rank
 
 -- Q46. MONTH-OVER-MONTH REVENUE GROWTH
 -- Calculate monthly revenue and the percentage change
@@ -539,15 +528,14 @@ order by latest_order_date_of_customer desc
 -- The first month can have NULL for previous revenue
 -- and growth percentage.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+with monthly_revenue as (
+select to_char(created_at, 'YYYY-MM') as month, sum(total) as month_revenue
+from order_details od 
+group by to_char(created_at, 'YYYY-MM'))
+select "month", month_revenue,
+coalesce(lag(month_revenue) over(order by "month"), 0) as previous_month_revenue,
+coalesce(((month_revenue - lag(month_revenue) over(order by "month"))*100.0)/(lag(month_revenue) over(order by "month")), 0) as revenue_growth_percentage
+from monthly_revenue 
 
 -- Q47. TOP CUSTOMER IN EACH MONTH
 -- Find the customer who generated the highest revenue
@@ -561,15 +549,15 @@ order by latest_order_date_of_customer desc
 -- If multiple customers tie for the highest revenue,
 -- return only ONE customer.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+with o1 as (
+select to_char(created_at, 'YYYY-MM') as month, user_id as customer_id, 
+sum(total) over(partition by to_char(created_at, 'YYYY-MM'), user_id) as total_revenue
+from order_details od), 
+o2 as (select "month", customer_id, total_revenue, row_number() over(partition by "month" order by total_revenue desc, customer_id) as top_customer_of_month
+from o1)
+select "month", customer_id, total_revenue
+from o2 
+where top_customer_of_month = 1
 
 -- Q48. ABANDONED CART VALUE
 -- Calculate the total potential value of products that
@@ -583,14 +571,9 @@ order by latest_order_date_of_customer desc
 -- Use product price and quantity.
 -- Apply the product discount where applicable.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
+select count(ss.id) as abandoned_shopping_session_count, sum(ss.total) as abandoned_cart_value
+from shopping_session ss 
+where not exists (select 1 from order_details od where ss.id = od.id)
 
 
 -- Q49. REPEAT CUSTOMER REVENUE
@@ -606,15 +589,16 @@ order by latest_order_date_of_customer desc
 --
 -- Do NOT include customers with zero orders.
 
-
--- Write your query below:
-
-
-
-
-
--- ============================================================
-
+with o1 as (
+select od.user_id, 
+case when count(od.id) > 1 then 'Repeat customers' when count(od.id) = 1 then 'One-Time customers' end as customer_type, 
+count(od.id) as number_of_orders, sum(total) as revenue
+from order_details od 
+group by od.user_id)
+select distinct customer_type, count(user_id) over(partition by customer_type) as number_of_customers,
+sum(revenue) over(partition by customer_type) as total_revenue,
+(sum(revenue) over(partition by customer_type)*100.0)/(sum(revenue) over()) as percentage_of_total_revenue
+from o1
 
 -- Q50. CUSTOMER REVENUE SEGMENTATION
 -- Classify customers based on their total spending:
@@ -631,21 +615,15 @@ order by latest_order_date_of_customer desc
 --
 -- Only include customers who have placed at least one order.
 
+with o1 as (
+select user_id as customer_id, sum(total) as total_spending 
+from order_details od 
+group by od.user_id)
+select customer_id, total_spending,
+case when (percent_rank() over(order by total_spending))*100.0 >= 75 then 'High Value' 
+	 when (percent_rank() over(order by total_spending))*100.0 >= 25 and (percent_rank() over(order by total_spending))*100.0 < 75 then 'Medium Value'
+	 when (percent_rank() over(order by total_spending))*100.0 < 25 then 'Low Value'
+end as customer_segment
+from o1 
+order by total_spending desc
 
--- Write your query below:
-
-
-
-
-
--- ============================================================
--- END OF SQL PROJECT ANALYSIS
---
--- After Q50:
---   1. Select final KPIs
---   2. Build Power BI dashboard
---   3. Add business insights
---   4. Prepare GitHub repository
---   5. Update LinkedIn
---   6. SQL revision + HackerRank SQL Advanced
--- ============================================================
